@@ -1,0 +1,1076 @@
+// LocalReach --- multi-tenant local community advertising platform
+// PostgreSQL 18 + Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// --------------------------------------------------------------------------------------------- Enums ---------------------------------------------------------------------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  PLATFORM_MODERATOR
+  COMMUNITY_OWNER
+  COMMUNITY_ADMIN
+  MODERATOR
+  BUSINESS_OWNER
+  ADVERTISER
+  USER
+}
+
+enum CommunityStatus {
+  PILOT
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+enum RuleType {
+  POSTING_HOURS
+  MAX_WEEKLY_ADS
+  MAX_IMAGES
+  PROHIBITED_KEYWORDS
+  PROHIBITED_CATEGORIES
+  PROHIBITED_LINKS
+  REQUIRES_APPROVAL
+  MINIMUM_USER_AGE
+  MAX_AD_DURATION
+}
+
+enum RuleSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PriceType {
+  FIXED
+  NEGOTIABLE
+  FREE
+  FROM
+  PER_DAY
+  PER_MONTH
+  CONTACT_SELLER
+}
+
+enum AdvertStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  PUBLISHED
+  REJECTED
+  EXPIRED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum AdvertVisibility {
+  PUBLIC
+  COMMUNITY_ONLY
+  UNLISTED
+}
+
+enum ModerationStatus {
+  PENDING
+  AUTO_APPROVED
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  SUSPENDED
+}
+
+enum AutomatedDecision {
+  SAFE
+  REVIEW
+  BLOCK
+}
+
+enum QuotaType {
+  FREE_ADVERT
+  BOOST_PREMIUM
+  FREE_SPECIAL
+}
+
+enum VerificationStatus {
+  NOT_VERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum PlanKey {
+  FREE
+  BOOST
+  PREMIUM
+  BUSINESS_MONTHLY
+  BUSINESS_ANNUAL
+  VERIFIED_BUSINESS
+}
+
+enum BillingPeriod {
+  ONE_TIME
+  MONTHLY
+  YEARLY
+}
+
+enum OrderItemType {
+  ADVERT_BOOST
+  BUSINESS_SUBSCRIPTION
+  BUSINESS_VERIFICATION
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  PAYFAST
+  STRIPE
+  MOCK
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELLED
+  ENDED
+}
+
+enum PayoutStatus {
+  PENDING_PAYOUT
+  APPROVED
+  PAID
+  FAILED
+}
+
+enum ReportReason {
+  SCAM
+  PROHIBITED_ITEM
+  INAPPROPRIATE_CONTENT
+  SPAM
+  FALSE_INFORMATION
+  DUPLICATE
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWED
+  DISMISSED
+  ACTION_TAKEN
+}
+
+enum ModerationActionType {
+  AD_APPROVED
+  AD_REJECTED
+  AD_FLAGGED
+  ADVERT_EDITED
+  ADVERT_REMOVED
+  CHANGES_REQUESTED
+  USER_WARNED
+  USER_SUSPENDED
+  USER_BANNED
+  USER_UNRESTRICTED
+  REPORT_DISMISSED
+}
+
+enum StrikeSeverity {
+  WARNING
+  TEMPORARY_RESTRICTION
+  SUSPENSION
+  BAN
+}
+
+enum NotificationType {
+  AD_APPROVED
+  AD_REJECTED
+  ADVERT_SUBMITTED
+  AD_EXPIRING
+  AD_EXPIRED
+  QUOTA_WARNING
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  BOOST_ACTIVATED
+  REPORT_UPDATE
+  BUSINESS_VERIFIED
+  MODERATION_WARNING
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+enum InteractionType {
+  VIEW
+  WHATSAPP_CLICK
+  PHONE_CLICK
+  WEBSITE_CLICK
+  SAVE
+  SHARE
+  REPORT
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum CommunityAdminRole {
+  COMMUNITY_OWNER
+  COMMUNITY_ADMIN
+  MODERATOR
+}
+
+enum SpecialStatus {
+  SCHEDULED
+  ACTIVE
+  ENDED
+}
+
+// --------------------------------------------------------------------------------------------- Auth & Users ---------------------------------------------------------------------------------------------
+
+model User {
+  id             String    @id @default(uuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  passwordHash   String?
+  image          String?
+  phone          String?
+  whatsappNumber String?
+  marketingOptIn Boolean   @default(false)
+  suspendedUntil DateTime?
+  bannedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  roles                  UserRole[]
+  communityMemberships   CommunityMember[]
+  communityAdminRoles    CommunityAdmin[]
+  adverts                Advert[]
+  businesses             BusinessProfile[]
+  savedAdverts           SavedAdvert[]
+  reports                AdvertReport[]
+  orders                 Order[]
+  payments               Payment[]
+  subscriptions          Subscription[]
+  notifications          Notification[]
+  interactions           AdvertInteraction[]
+  strikesIssued          UserStrike[]         @relation("IssuedStrikes")
+  strikes                UserStrike[]         @relation("ReceivedStrikes")
+  advertsReviewed        Advert[]             @relation("AdvertReviewer")
+  reportsResolved        AdvertReport[]       @relation("ReportResolver")
+  moderationActionsTaken ModerationAction[]   @relation("ModerationActor")
+  invitationsSent        Invitation[]         @relation("InvitedBy")
+  auditLogs              AuditLog[]
+  passwordResetTokens    PasswordResetToken[]
+  accounts               Account[]
+  sessions               Session[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@map("User")
+}
+
+model UserRole {
+  userId String
+  role   Role
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, role])
+  @@map("UserRole")
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String 
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("Account")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String  
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("Session")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("VerificationToken")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("PasswordResetToken")
+}
+
+model Permission {
+  key         String           @id
+  description String
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleName      Role
+  permissionKey String
+  permission    Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+
+  @@id([roleName, permissionKey])
+  @@map("RolePermission")
+}
+
+// --------------------------------------------------------------------------------------------- Communities (tenants) ---------------------------------------------------------------------------------------------
+
+model Community {
+  id          String          @id @default(uuid())
+  name        String
+  slug        String          @unique
+  description String?
+  tagline     String?
+  suburb      String?
+  city        String?
+  province    String?
+  country     String          @default("South Africa")
+  timezone    String          @default("Africa/Johannesburg")
+  status      CommunityStatus @default(PILOT)
+  pilotStart  DateTime?
+  pilotEnd    DateTime?
+  launchedAt  DateTime?
+
+  // Advertising limits (defaults consumed by the rules engine)
+  freeAdLimit               Int     @default(2)
+  freeAdPeriodDays          Int     @default(7)
+  maxAdImages               Int     @default(2)
+  maxAdDurationDays         Int     @default(30)
+  postingStartHour          Int     @default(0) // allowed window start (inclusive); 0 + 0 = no restriction (anytime)
+  postingEndHour            Int     @default(0) // allowed window end (exclusive); equal to start = unrestricted
+  allowPostingHoursOverride Boolean @default(true)
+  allowCollage              Boolean @default(true)
+  allowMultipleProducts     Boolean @default(true)
+  allowDailySpecials        Boolean @default(true)
+  requireApproval           Boolean @default(true)
+
+  // Strike policy (0 disables that level)
+  warnAfter     Int @default(1)
+  restrictAfter Int @default(2)
+  suspendAfter  Int @default(3)
+  banAfter      Int @default(5)
+
+  // Branding
+  logoUrl       String?
+  coverImageUrl String?
+  accentColor   String  @default("#158258")
+  footerText    String?
+
+  // WhatsApp
+  whatsappInviteUrl     String?
+  whatsappCtaEnabled    Boolean @default(true)
+  whatsappCommunityName String?
+
+  currency String @default("ZAR")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  rules               CommunityRule[]
+  categories          Category[]
+  admins              CommunityAdmin[]
+  members             CommunityMember[]
+  adverts             Advert[]
+  businesses          BusinessProfile[]
+  specials            BusinessSpecial[]
+  pricingPlans        PricingPlan[]
+  orders              Order[]
+  payments            Payment[]
+  strikes             UserStrike[]
+  subscriptions       Subscription[]
+  revenueShareRules   RevenueShareRule[]
+  revenueTransactions RevenueTransaction[]
+  payouts             CommunityPayout[]
+  reports             AdvertReport[]
+  moderationActions   ModerationAction[]
+  auditLogs           AuditLog[]
+  invitations         Invitation[]
+  quotaUsage          AdvertQuotaUsage[]
+  whatsappTemplates   WhatsAppTemplate[]
+
+  @@index([status])
+  @@map("Community")
+}
+
+model CommunityMember {
+  userId      String
+  communityId String
+  joinedAt    DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@id([userId, communityId])
+  @@index([communityId])
+  @@map("CommunityMember")
+}
+
+model CommunityAdmin {
+  userId      String
+  communityId String
+  role        CommunityAdminRole
+  assignedAt  DateTime           @default(now())
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community   Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@id([userId, communityId])
+  @@index([communityId])
+  @@map("CommunityAdmin")
+}
+
+model CommunityRule {
+  id            String       @id @default(uuid())
+  communityId   String
+  name          String
+  description   String?
+  type          RuleType
+  enabled       Boolean      @default(true)
+  severity      RuleSeverity @default(MEDIUM)
+  configuration Json
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  community     Community    @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([communityId])
+  @@index([communityId, type])
+  @@map("CommunityRule")
+}
+
+// --------------------------------------------------------------------------------------------- Categories ---------------------------------------------------------------------------------------------
+
+model Category {
+  id           String    @id @default(uuid())
+  communityId  String
+  name         String
+  slug         String
+  description  String?
+  icon         String?
+  sortOrder    Int       @default(0)
+  isActive     Boolean   @default(true)
+  isProhibited Boolean   @default(false) // blocked for new adverts
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  community    Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  subcategories Subcategory[]
+  adverts       Advert[]
+  businesses    BusinessProfile[] @relation("BusinessCategory")
+
+  @@unique([communityId, slug])
+  @@index([communityId, isActive])
+  @@map("Category")
+}
+
+model Subcategory {
+  id         String   @id @default(uuid())
+  categoryId String
+  name       String
+  slug       String
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  adverts    Advert[]
+
+  @@unique([categoryId, slug])
+  @@map("Subcategory")
+}
+
+// --------------------------------------------------------------------------------------------- Adverts ---------------------------------------------------------------------------------------------
+
+model Advert {
+  id                String             @id @default(uuid())
+  communityId       String
+  advertiserId      String
+  title             String
+  slug              String             @unique
+  description       String             @db.Text
+  categoryId        String
+  subcategoryId     String?
+  price             Decimal?           @db.Decimal(12, 2)
+  priceType         PriceType          @default(FIXED)
+  location          String?
+  suburb            String?
+  city              String?
+  province          String?
+  contactName       String
+  contactPhone      String?
+  contactEmail      String?
+  whatsappNumber    String?
+  externalWebsite   String?
+  status            AdvertStatus       @default(DRAFT)
+  moderationStatus  ModerationStatus   @default(PENDING)
+  visibility        AdvertVisibility   @default(PUBLIC)
+  automatedDecision AutomatedDecision?
+  riskScore         Int?
+  moderationReasons String[]
+  isFeatured        Boolean            @default(false)
+  featuredUntil     DateTime?
+  activeBoostKey    PlanKey?
+  businessId        String?
+  expiresAt         DateTime?
+  publishedAt       DateTime?
+  viewCount         Int                @default(0)
+  reviewedById      String?
+  reviewedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+
+  community   Community        @relation(fields: [communityId], references: [id])
+  advertiser  User             @relation(fields: [advertiserId], references: [id])
+  category    Category         @relation(fields: [categoryId], references: [id])
+  subcategory Subcategory?     @relation(fields: [subcategoryId], references: [id])
+  business    BusinessProfile? @relation("BusinessAdverts", fields: [businessId], references: [id])
+  reviewer    User?            @relation("AdvertReviewer", fields: [reviewedById], references: [id])
+
+  images            AdvertImage[]
+  quotaUsage        AdvertQuotaUsage[]
+  savedBy           SavedAdvert[]
+  reports           AdvertReport[]
+  interactions      AdvertInteraction[]
+  views             AdvertView[]
+  orders            Order[]
+  moderationActions ModerationAction[]
+
+  @@index([communityId])
+  @@index([status])
+  @@index([categoryId])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([advertiserId])
+  @@index([isFeatured])
+  @@index([communityId, status, createdAt])
+  @@map("Advert")
+}
+
+model AdvertImage {
+  id           String   @id @default(uuid())
+  advertId     String
+  url          String
+  thumbnailUrl String?
+  alt          String?
+  width        Int?
+  height       Int?
+  sizeBytes    Int?
+  mimeType     String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  advert       Advert   @relation(fields: [advertId], references: [id], onDelete: Cascade)
+
+  @@index([advertId])
+  @@map("AdvertImage")
+}
+
+model AdvertQuotaUsage {
+  id          String    @id @default(uuid())
+  userId      String
+  communityId String
+  advertId    String?
+  quotaType   QuotaType @default(FREE_ADVERT)
+  createdAt   DateTime  @default(now())
+  advert      Advert?   @relation(fields: [advertId], references: [id], onDelete: SetNull)
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([userId, communityId, quotaType, createdAt])
+  @@index([communityId, createdAt])
+  @@map("AdvertQuotaUsage")
+}
+
+model SavedAdvert {
+  userId         String
+  advertId       String
+  notifyOnExpiry Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  advert         Advert   @relation(fields: [advertId], references: [id], onDelete: Cascade)
+
+  @@id([userId, advertId])
+  @@index([advertId])
+  @@map("SavedAdvert")
+}
+
+model AdvertInteraction {
+  id        String          @id @default(uuid())
+  advertId  String
+  userId    String?
+  type      InteractionType
+  metadata  Json?
+  createdAt DateTime        @default(now())
+  advert    Advert          @relation(fields: [advertId], references: [id], onDelete: Cascade)
+  user      User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([advertId])
+  @@index([advertId, type])
+  @@index([createdAt])
+  @@map("AdvertInteraction")
+}
+
+model AdvertView {
+  id       String   @id @default(uuid())
+  advertId String
+  day      DateTime @db.Date
+  count    Int      @default(0)
+  advert   Advert   @relation(fields: [advertId], references: [id], onDelete: Cascade)
+
+  @@unique([advertId, day])
+  @@index([advertId, day])
+  @@map("AdvertView")
+}
+
+// --------------------------------------------------------------------------------------------- Businesses ---------------------------------------------------------------------------------------------
+
+model BusinessProfile {
+  id                 String             @id @default(uuid())
+  ownerId            String
+  communityId        String
+  businessName       String
+  slug               String             @unique
+  description        String             @db.Text
+  logo               String?
+  coverImage         String?
+  categoryId         String?
+  phone              String?
+  whatsapp           String?
+  email              String?
+  website            String?
+  address            String?
+  suburb             String?
+  city               String?
+  province           String?
+  tradingHours       Json?
+  socialLinks        Json?
+  verificationStatus VerificationStatus @default(NOT_VERIFIED)
+  verifiedAt         DateTime?
+  verificationChecks Json?
+  featuredUntil      DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  deletedAt          DateTime?
+
+  owner     User      @relation(fields: [ownerId], references: [id])
+  community Community @relation(fields: [communityId], references: [id])
+  category  Category? @relation("BusinessCategory", fields: [categoryId], references: [id])
+
+  specials      BusinessSpecial[]
+  adverts       Advert[]          @relation("BusinessAdverts")
+  orders        Order[]
+  subscriptions Subscription[]
+  reviews       BusinessReview[]
+
+  @@index([communityId])
+  @@index([ownerId])
+  @@index([verificationStatus])
+  @@map("BusinessProfile")
+}
+
+model BusinessSpecial {
+  id          String          @id @default(uuid())
+  businessId  String
+  communityId String
+  title       String
+  description String          @db.Text
+  images      String[]
+  priceNote   String?
+  startDate   DateTime
+  endDate     DateTime
+  status      SpecialStatus   @default(SCHEDULED)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  business    BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  community   Community       @relation(fields: [communityId], references: [id])
+
+  @@index([communityId, status])
+  @@index([businessId])
+  @@map("BusinessSpecial")
+}
+
+model BusinessReview {
+  id         String          @id @default(uuid())
+  businessId String
+  userId     String?
+  authorName String
+  rating     Int
+  comment    String?
+  isPublic   Boolean         @default(false)
+  createdAt  DateTime        @default(now())
+  business   BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@map("BusinessReview")
+}
+
+// --------------------------------------------------------------------------------------------- Pricing, Orders, Payments ---------------------------------------------------------------------------------------------
+
+model PricingPlan {
+  id                String        @id @default(uuid())
+  communityId       String? // null = platform default plan
+  planKey           PlanKey
+  name              String
+  description       String?
+  price             Decimal       @db.Decimal(12, 2)
+  currency          String        @default("ZAR")
+  billingPeriod     BillingPeriod @default(ONE_TIME)
+  features          String[]
+  isActive          Boolean       @default(true)
+  boostDurationDays Int?
+  extraImages       Int?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  community         Community?    @relation(fields: [communityId], references: [id])
+
+  orders        Order[]
+  subscriptions Subscription[]
+
+  @@unique([communityId, planKey])
+  @@index([communityId, isActive])
+  @@map("PricingPlan")
+}
+
+model Order {
+  id             String        @id @default(uuid())
+  userId         String
+  communityId    String?
+  itemType       OrderItemType
+  planKey        PlanKey
+  planId         String
+  advertId       String?
+  businessId     String?
+  months         Int? // subscription length for BUSINESS_* items
+  amount         Decimal       @db.Decimal(12, 2)
+  currency       String        @default("ZAR")
+  status         OrderStatus   @default(PENDING)
+  idempotencyKey String        @unique
+  metadata       Json?
+  paidAt         DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user                User                 @relation(fields: [userId], references: [id])
+  community           Community?           @relation(fields: [communityId], references: [id])
+  advert              Advert?              @relation(fields: [advertId], references: [id])
+  business            BusinessProfile?     @relation(fields: [businessId], references: [id])
+  plan                PricingPlan          @relation(fields: [planId], references: [id])
+  payments            Payment[]
+  revenueTransactions RevenueTransaction[]
+
+  @@index([userId])
+  @@index([communityId, createdAt])
+  @@index([status])
+  @@map("Order")
+}
+
+model Payment {
+  id                String          @id @default(uuid())
+  userId            String
+  communityId       String?
+  orderId           String
+  provider          PaymentProvider
+  providerReference String?
+  amount            Decimal         @db.Decimal(12, 2)
+  currency          String          @default("ZAR")
+  status            PaymentStatus   @default(PENDING)
+  metadata          Json?
+  paidAt            DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user                User                 @relation(fields: [userId], references: [id])
+  community           Community?           @relation(fields: [communityId], references: [id])
+  order               Order                @relation(fields: [orderId], references: [id])
+  revenueTransactions RevenueTransaction[]
+
+  @@unique([provider, providerReference])
+  @@index([status])
+  @@index([createdAt])
+  @@map("Payment")
+}
+
+model Subscription {
+  id                String             @id @default(uuid())
+  userId            String
+  communityId       String
+  businessId        String?
+  planKey           PlanKey
+  planId            String
+  status            SubscriptionStatus @default(ACTIVE)
+  currentPeriodEnd  DateTime
+  cancelAtPeriodEnd Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user      User             @relation(fields: [userId], references: [id])
+  community Community        @relation(fields: [communityId], references: [id])
+  business  BusinessProfile? @relation(fields: [businessId], references: [id])
+  plan      PricingPlan      @relation(fields: [planId], references: [id])
+
+  @@index([userId, status])
+  @@index([communityId, planKey, status])
+  @@index([businessId])
+  @@map("Subscription")
+}
+
+// --------------------------------------------------------------------------------------------- Revenue sharing ---------------------------------------------------------------------------------------------
+
+model RevenueShareRule {
+  id                  String     @id @default(uuid())
+  communityId         String? // null = platform default
+  platformPercentage  Decimal    @db.Decimal(5, 2) // e.g. 70.00
+  communityPercentage Decimal    @db.Decimal(5, 2) // e.g. 30.00
+  adminPercentage     Decimal?   @db.Decimal(5, 2) // optional override for a specific admin
+  effectiveFrom       DateTime   @default(now())
+  effectiveUntil      DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  community           Community? @relation(fields: [communityId], references: [id])
+
+  @@index([communityId])
+  @@map("RevenueShareRule")
+}
+
+model RevenueTransaction {
+  id              String   @id @default(uuid())
+  communityId     String
+  paymentId       String   @unique
+  orderId         String
+  grossAmount     Decimal  @db.Decimal(12, 2)
+  platformAmount  Decimal  @db.Decimal(12, 2)
+  communityAmount Decimal  @db.Decimal(12, 2)
+  adminAmount     Decimal? @db.Decimal(12, 2)
+  currency        String   @default("ZAR")
+  createdAt       DateTime @default(now())
+
+  community Community @relation(fields: [communityId], references: [id])
+  payment   Payment   @relation(fields: [paymentId], references: [id])
+  order     Order     @relation(fields: [orderId], references: [id])
+
+  @@index([communityId, createdAt])
+  @@map("RevenueTransaction")
+}
+
+model CommunityPayout {
+  id           String       @id @default(uuid())
+  communityId  String
+  amount       Decimal      @db.Decimal(12, 2)
+  currency     String       @default("ZAR")
+  status       PayoutStatus @default(PENDING_PAYOUT)
+  periodStart  DateTime?
+  periodEnd    DateTime?
+  approvedById String?
+  paidAt       DateTime?
+  reference    String?
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id])
+
+  @@index([communityId, status])
+  @@map("CommunityPayout")
+}
+
+// --------------------------------------------------------------------------------------------- Reports & moderation ---------------------------------------------------------------------------------------------
+
+model AdvertReport {
+  id           String       @id @default(uuid())
+  advertId     String
+  communityId  String
+  reporterId   String?
+  reason       ReportReason
+  details      String?
+  status       ReportStatus @default(OPEN)
+  resolvedById String?
+  resolvedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  advert    Advert    @relation(fields: [advertId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id])
+  reporter  User?     @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+  resolver  User?     @relation("ReportResolver", fields: [resolvedById], references: [id])
+
+  @@index([communityId, status])
+  @@index([advertId])
+  @@map("AdvertReport")
+}
+
+model ModerationAction {
+  id           String               @id @default(uuid())
+  actorId      String
+  communityId  String
+  advertId     String?
+  targetUserId String?
+  action       ModerationActionType
+  reason       String?
+  notes        String?
+  createdAt    DateTime             @default(now())
+
+  actor     User      @relation("ModerationActor", fields: [actorId], references: [id])
+  community Community @relation(fields: [communityId], references: [id])
+  advert    Advert?   @relation(fields: [advertId], references: [id], onDelete: SetNull)
+
+  @@index([communityId, createdAt])
+  @@index([advertId])
+  @@map("ModerationAction")
+}
+
+model UserStrike {
+  id          String         @id @default(uuid())
+  userId      String
+  issuedById  String
+  communityId String?
+  severity    StrikeSeverity
+  reason      String
+  expiresAt   DateTime?
+  createdAt   DateTime       @default(now())
+
+  user      User       @relation("ReceivedStrikes", fields: [userId], references: [id], onDelete: Cascade)
+  issuedBy  User       @relation("IssuedStrikes", fields: [issuedById], references: [id])
+  community Community? @relation(fields: [communityId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("UserStrike")
+}
+
+// --------------------------------------------------------------------------------------------- Notifications & audit ---------------------------------------------------------------------------------------------
+
+model Notification {
+  id        String              @id @default(uuid())
+  userId    String
+  type      NotificationType
+  channel   NotificationChannel @default(IN_APP)
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("Notification")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?
+  communityId String?
+  action      String
+  entityType  String
+  entityId    String?
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  actor     User?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  community Community? @relation(fields: [communityId], references: [id])
+
+  @@index([communityId, createdAt])
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@map("AuditLog")
+}
+
+// --------------------------------------------------------------------------------------------- Invitations & settings ---------------------------------------------------------------------------------------------
+
+model Invitation {
+  id          String             @id @default(uuid())
+  communityId String
+  email       String
+  role        CommunityAdminRole
+  token       String             @unique
+  status      InvitationStatus   @default(PENDING)
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime           @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  invitedBy User      @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([communityId, status])
+  @@index([email])
+  @@map("Invitation")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model WhatsAppTemplate {
+  id          String     @id @default(uuid())
+  communityId String? // null = platform default template
+  templateKey String // SHORT | DETAILED | BUSINESS_SPECIAL
+  name        String
+  body        String     @db.Text // {{title}} {{price}} {{description}} {{location}} {{contact}} {{url}} {{communityName}}
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  community   Community? @relation(fields: [communityId], references: [id])
+
+  @@unique([communityId, templateKey])
+  @@map("WhatsAppTemplate")
+}
